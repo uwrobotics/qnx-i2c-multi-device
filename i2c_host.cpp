@@ -17,13 +17,50 @@
 #include <pthread.h>
 
 
+/** @brief Maximum number of I2C buses supported by this driver */
 #define MAX_I2C_BUSES       8
+
+/** @brief IRQ number for I2C interrupt handling (platform-specific) */
 #define IRQ_NUM 149
 
-// File descriptor for I2C device
+/**
+ * @brief File descriptors for I2C device connections
+ *
+ * Array of file descriptors, one per I2C bus. Initialized to -1 (disconnected).
+ */
 static int i2c_fd[MAX_I2C_BUSES] = { -1, -1, -1, -1, -1, -1, -1, -1};
-// Mutex for thread-safe I2C operations
+
+/**
+ * @brief Mutex for thread-safe I2C operations
+ *
+ * Ensures exclusive access to I2C bus resources across multiple threads.
+ */
 static pthread_mutex_t i2c_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/**
+ * @brief I2C receive data message structure
+ *
+ * Used with DCMD_I2C_SENDRECV devctl command to read data from I2C devices.
+ * Memory is allocated dynamically to accommodate variable-length data.
+ */
+struct i2c_recv_data_msg_t
+{
+    i2c_sendrecv_t hdr;     /**< I2C send/receive header with slave info and lengths */
+    uint8_t bytes[];        /**< Flexible array member for received data bytes (C99) */
+};
+
+/**
+ * @brief I2C send data message structure
+ *
+ * Used with DCMD_I2C_SEND devctl command to write data to I2C devices.
+ * Memory is allocated dynamically to accommodate variable-length data.
+ */
+struct i2c_send_data_msg_t
+{
+    i2c_send_t hdr;         /**< I2C send header with slave info and data length */
+    uint8_t bytes[];        /**< Flexible array member for data bytes to send (C99) */
+};
+
 
 /**
  * @brief Constructor - initializes I2C device and establishes connection
@@ -60,9 +97,9 @@ I2CDevice::~I2CDevice()
  *
  * Opens the I2C bus device file (/dev/i2cN) and prepares for communication.
  *
- * @return i2c_status_t I2C_SUCCESS on success, I2C_ERROR_NOT_CONNECTED on failure
+ * @return i2c_state_t I2C_SUCCESS on success, I2C_ERROR_NOT_CONNECTED on failure
  */
-i2c_status_t I2CDevice::connect()
+i2c_state_t I2CDevice::connect()
 {
     char dev_path[32];
     snprintf(dev_path, sizeof(dev_path), "/dev/i2c%d", _bus_number);
@@ -86,9 +123,9 @@ i2c_status_t I2CDevice::connect()
  *
  * Closes the file descriptor and releases resources.
  *
- * @return i2c_status_t I2C_SUCCESS on success, I2C_ERROR_CLEANING_UP on failure
+ * @return i2c_state_t I2C_SUCCESS on success, I2C_ERROR_CLEANING_UP on failure
  */
-i2c_status_t I2CDevice::disconnect()
+i2c_state_t I2CDevice::disconnect()
 {
     pthread_mutex_lock(&i2c_mutex);
 
@@ -105,21 +142,6 @@ i2c_status_t I2CDevice::disconnect()
     return I2C_SUCCESS;
 }
 
-/* the I2C receive data message structure (allocate extra spaces for data bytes) */
-struct i2c_recv_data_msg_t
-{
-    i2c_sendrecv_t hdr;
-    uint8_t bytes[0];
-};
-
-/* the I2C send data message structure (allocate extra spaces for data bytes) */
-struct i2c_send_data_msg_t
-{
-    i2c_send_t hdr;
-    uint8_t bytes[0];
-};
-
-
 /**
  * @brief Reads data from the I2C slave device
  *
@@ -128,9 +150,9 @@ struct i2c_send_data_msg_t
  * - mem_access_t: Read from a specific internal register/memory address
  *
  * @param[in,out] data Variant containing either direct_access_t or mem_access_t
- * @return i2c_status_t I2C_SUCCESS on success, error code otherwise
+ * @return i2c_state_t I2C_SUCCESS on success, error code otherwise
  */
-i2c_status_t I2CDevice::read(std::variant<direct_access_t, mem_access_t> &data)
+i2c_state_t I2CDevice::read(std::variant<direct_access_t, mem_access_t> &data)
 {
     if (this->connect())
     {
@@ -239,9 +261,9 @@ i2c_status_t I2CDevice::read(std::variant<direct_access_t, mem_access_t> &data)
  * - mem_access_t: Write to a specific internal register/memory address
  *
  * @param[in] data Variant containing either direct_access_t or mem_access_t
- * @return i2c_status_t I2C_SUCCESS on success, error code otherwise
+ * @return i2c_state_t I2C_SUCCESS on success, error code otherwise
  */
-i2c_status_t I2CDevice::write(const std::variant<direct_access_t, mem_access_t> &data)
+i2c_state_t I2CDevice::write(const std::variant<direct_access_t, mem_access_t> &data)
 {
     if (this->connect())
     {
@@ -250,9 +272,9 @@ i2c_status_t I2CDevice::write(const std::variant<direct_access_t, mem_access_t> 
     }
 
     const int MIN_MEM_WRITE_SIZE = 2; //Reg+Data
-    const int MIN_WRITE_SIZE = 1; //Reg+Data
+    const int MIN_WRITE_SIZE = 1; //Data
 
-    // Handle direct read (no register address)
+    // Handle direct write (no register address)
     if (std::holds_alternative<direct_access_t>(data)) {
         auto& mem = std::get<direct_access_t>(data);
 
@@ -297,11 +319,11 @@ i2c_status_t I2CDevice::write(const std::variant<direct_access_t, mem_access_t> 
 
         return I2C_SUCCESS;
     }
-    // Handle memory-addressed read (with register address)
+    // Handle memory-addressed write (with register address)
     else if (std::holds_alternative<mem_access_t>(data)) {
         auto& mem = std::get<mem_access_t>(data);
 
-        if(mem.size < MIN_WRITE_SIZE) {
+        if(mem.size < MIN_MEM_WRITE_SIZE) {
             perror("write_size_err");
             return I2C_ERROR_OPERATION_FAILED;
         }
@@ -355,9 +377,9 @@ i2c_status_t I2CDevice::write(const std::variant<direct_access_t, mem_access_t> 
  * Closes the I2C device file descriptor and releases any held mutexes.
  * This is typically called when done with all I2C operations.
  *
- * @return i2c_status_t I2C_SUCCESS on success, I2C_ERROR_CLEANING_UP on failure
+ * @return i2c_state_t I2C_SUCCESS on success, I2C_ERROR_CLEANING_UP on failure
  */
-i2c_status_t I2CDevice::smbus_cleanup()
+i2c_state_t I2CDevice::smbus_cleanup()
 {
     return disconnect();
 }
@@ -372,5 +394,7 @@ uint16_t I2CDevice::getSlaveAddress() const
     return _slave.info.addr;
 }
 
-
-// TODO: Add thread based interrupt support
+/**
+ * @todo Implement thread-based interrupt support for I2C_Listen mode
+ * @see I2C_MasterRxCallback
+ */

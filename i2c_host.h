@@ -33,7 +33,7 @@
  *
  * // Direct read
  * uint8_t buffer[4];
- * direct_access_t direct = {.buf = buffer, .len = 4};
+ * direct_access_t direct = {.buf = buffer, .size = 4};
  * std::variant<direct_access_t, mem_access_t> data = direct;
  * sensor.read(data);
  *
@@ -73,9 +73,9 @@ class I2CDevice {
          *
          * @param[in,out] data Variant containing either direct_access_t or mem_access_t
          *                     The buffer will be filled with data read from the device
-         * @return i2c_status_t I2C_SUCCESS on success, error code otherwise
+         * @return i2c_state_t I2C_SUCCESS on success, error code otherwise
          */
-        i2c_status_t read(std::variant<direct_access_t, mem_access_t> &data);
+        i2c_state_t read(std::variant<direct_access_t, mem_access_t> &data);
 
         /**
          * @brief Writes data to the I2C slave device
@@ -86,9 +86,9 @@ class I2CDevice {
          *
          * @param[in] data Variant containing either direct_access_t or mem_access_t
          *                 with the data to be written
-         * @return i2c_status_t I2C_SUCCESS on success, error code otherwise
+         * @return i2c_state_t I2C_SUCCESS on success, error code otherwise
          */
-        i2c_status_t write(const std::variant<direct_access_t, mem_access_t> &data);
+        i2c_state_t write(const std::variant<direct_access_t, mem_access_t> &data);
 
         /**
          * @brief Cleans up I2C device resources
@@ -96,9 +96,9 @@ class I2CDevice {
          * Closes the I2C device file descriptor and releases any held mutexes.
          * Should be called after completing I2C operations to free resources.
          *
-         * @return i2c_status_t I2C_SUCCESS on success, I2C_ERROR_CLEANING_UP on failure
+         * @return i2c_state_t I2C_SUCCESS on success, I2C_ERROR_CLEANING_UP on failure
          */
-        i2c_status_t smbus_cleanup();
+        i2c_state_t smbus_cleanup();
 
         /**
          * @brief Retrieves the slave device address
@@ -110,19 +110,23 @@ class I2CDevice {
         /**
          * @brief Interrupt callback for I2C master receive
          *
-         * This callback is invoked when an I2C master receive a packet
+         * This callback is invoked when an I2C master receives a packet
          * in interrupt-driven mode (I2C_Listen). It should be called by the interrupt
          * handler to process received data.
          *
+         * @param arg Argument pointer passed to the callback
+         * @return void* Return value from the callback
+         *
          * @note Only applicable when device is configured with I2C_Listen mode
+         * @note This function is not yet implemented
          * @see device_type_t::I2C_Listen
          */
-        void *I2CDevice::I2C_MasterRxCallback(void* arg);
+        void *I2C_MasterRxCallback(void* arg);
 
     private:
         uint8_t _bus_number;        /**< I2C bus number */
         i2c_slave_t _slave;         /**< Slave device configuration */
-        pthread_t _tid;  // Interrupt Thread(TODO)
+        pthread_t _tid;             /**< Interrupt handler thread (not yet implemented) */
 
 
         /**
@@ -130,18 +134,18 @@ class I2CDevice {
          *
          * Opens the I2C bus device file and configures the slave address.
          *
-         * @return i2c_status_t I2C_SUCCESS on success, error code otherwise
+         * @return i2c_state_t I2C_SUCCESS on success, error code otherwise
          */
-        i2c_status_t connect();
+        i2c_state_t connect();
 
         /**
          * @brief Disconnects from the I2C device
          *
          * Closes the file descriptor and releases resources.
          *
-         * @return i2c_status_t I2C_SUCCESS on success, error code otherwise
+         * @return i2c_state_t I2C_SUCCESS on success, error code otherwise
          */
-        i2c_status_t disconnect();
+        i2c_state_t disconnect();
 };
 
 #endif // I2C_HOST_H

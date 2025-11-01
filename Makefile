@@ -33,7 +33,7 @@ LD = $(CXX)
 #User defined include/preprocessor flags and libraries
 
 #INCLUDES += -I/path/to/my/lib/include
-#INCLUDES += -I../mylib/public
+INCLUDES += -I.
 
 #LIBS += -L/path/to/my/lib/$(PLATFORM)/usr/lib -lmylib
 #LIBS += -L../mylib/$(OUTPUT_DIR) -lmylib

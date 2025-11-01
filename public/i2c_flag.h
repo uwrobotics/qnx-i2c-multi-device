@@ -24,7 +24,7 @@ typedef enum {
     I2C_ERROR_ALLOC_FAILED = -2,        /**< Memory allocation failed */
     I2C_ERROR_OPERATION_FAILED = -3,    /**< I2C read/write operation failed */
     I2C_ERROR_CLEANING_UP = -4          /**< Error during cleanup (fd close or mutex release) */
-} i2c_status_t;
+} i2c_state_t;
 
 /**
  * @brief I2C device operation modes
@@ -63,11 +63,11 @@ typedef struct {
  * Used for direct read/write operations without internal register addressing.
  * Typical use case: reading raw data from simple I2C sensors.
  *
- * Initialize with: direct_access_t data = {.buf = buffer, .len = 4};
+ * Initialize with: direct_access_t data = {.buf = buffer, .size = 4};
  */
 typedef struct {
     uint8_t *buf;           /**< Pointer to data buffer for read/write */
-    size_t size;             /**< Number of bytes to read/write (default: 1) */
+    size_t size;            /**< Number of bytes to read/write */
 } direct_access_t;
 
 /**
@@ -79,9 +79,9 @@ typedef struct {
  * Initialize with: mem_access_t data = {.addr = 0x10, .buf = buffer, .size = 2};
  */
 typedef struct {
-    uint8_t addr;          /**< Internal register/memory address within the device */
+    uint8_t addr;           /**< Internal register/memory address within the device */
     uint8_t *buf;           /**< Pointer to data buffer for read/write */
-    size_t size;
+    size_t size;            /**< Number of bytes to read/write */
 } mem_access_t;
 
 #endif // I2C_FLAG_H
