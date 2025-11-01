@@ -36,14 +36,14 @@ I2CDevice::I2CDevice(uint8_t bus_number, uint8_t slave_addr, device_type_t mode)
     : _bus_number(bus_number)
 {
     // Initialize slave configuration
-    _slave.addr = slave_addr;
-    _slave.fmt = I2C_ADDRFMT_7BIT;
+    _slave.info.addr = slave_addr;
+    _slave.info.fmt = I2C_ADDRFMT_7BIT;
     _slave.mode = mode;
 
     // Establish connection to I2C device
     if (connect() != I2C_SUCCESS) {
         fprintf(stderr, "Failed to connect to I2C device on bus %d, addr 0x%02X\n",
-                _bus_number, _slave.addr);
+                _bus_number, _slave.info.addr);
     }
 }
 
@@ -105,6 +105,21 @@ i2c_status_t I2CDevice::disconnect()
     return I2C_SUCCESS;
 }
 
+/* the I2C receive data message structure (allocate extra spaces for data bytes) */
+struct i2c_recv_data_msg_t
+{
+    i2c_sendrecv_t hdr;
+    uint8_t bytes[0];
+};
+
+/* the I2C send data message structure (allocate extra spaces for data bytes) */
+struct i2c_send_data_msg_t
+{
+    i2c_send_t hdr;
+    uint8_t bytes[0];
+};
+
+
 /**
  * @brief Reads data from the I2C slave device
  *
@@ -118,80 +133,103 @@ i2c_status_t I2CDevice::disconnect()
 i2c_status_t I2CDevice::read(std::variant<direct_access_t, mem_access_t> &data)
 {
     // TODO: Redo the implementation, there should not be mutex lock and need to open the i2c FD and then handle the logic
-    pthread_mutex_lock(&i2c_mutex);
-
-    if (i2c_fd[_bus_number] == -1) {
-        pthread_mutex_unlock(&i2c_mutex);
+    if (this->connect())
+    {
+        perror("open_i2c_fd");
         return I2C_ERROR_NOT_CONNECTED;
     }
 
-    i2c_status_t status = I2C_SUCCESS;
+    const int MIN_READ_SIZE = 1;
 
     // Handle direct read (no register address)
     if (std::holds_alternative<direct_access_t>(data)) {
-        auto& direct = std::get<direct_access_t>(data);
+        auto& mem = std::get<direct_access_t>(data);
 
-        // Allocate I2C send structure for direct read
-        size_t msg_size = sizeof(i2c_send_t) + direct.len;
-        i2c_send_t *msg = (i2c_send_t *)malloc(msg_size);
-        if (!msg) {
-            pthread_mutex_unlock(&i2c_mutex);
+        if(mem.size < MIN_READ_SIZE) {
+            mem.size = MIN_READ_SIZE;
+        }
+
+        struct i2c_recv_data_msg_t *msg = NULL;
+
+        msg = (struct i2c_recv_data_msg_t*)malloc(sizeof(struct i2c_recv_data_msg_t) + mem.size); // allocate enough memory for both the calling information and received data
+        if (!msg)
+        {
+            perror("alloc failed");
             return I2C_ERROR_ALLOC_FAILED;
         }
 
-        // Configure message for receive operation
-        msg->slave.addr = _slave.addr;
-        msg->slave.fmt = _slave.fmt;
-        msg->len = direct.len;
-        msg->stop = 1;
+        // Assign the I2C device and format of message
+        msg->hdr.slave.addr = _slave.info.addr;
+        msg->hdr.slave.fmt = _slave.info.fmt;
+        msg->hdr.send_len = 0; // no register to send
+        msg->hdr.recv_len = mem.size;
+        msg->hdr.stop = 1;
 
-        // Perform I2C read operation
-        if (devctl(i2c_fd, DCMD_I2C_SEND, msg, msg_size, NULL) != EOK) {
-            fprintf(stderr, "I2C direct read failed: %s\n", strerror(errno));
-            status = I2C_ERROR_OPERATION_FAILED;
-        } else {
-            // Copy received data to buffer
-            memcpy(direct.buf, msg->buf, direct.len);
+        // Send the I2C message
+        int status, err; // status information about the devctl() call
+        err = devctl(i2c_fd[_bus_number], DCMD_I2C_SENDRECV, msg, sizeof(*msg) + mem.size, (&status));
+        if (err != EOK)
+        {
+            free(msg);
+            fprintf(stderr, "error with devctl: %s\n", strerror(err));
+            return I2C_ERROR_OPERATION_FAILED;
         }
 
+        // return the read data
+        memcpy(mem.buf, msg->bytes, mem.size);
+
+        // Free allocated message
         free(msg);
+
+        return I2C_SUCCESS;
     }
     // Handle memory-addressed read (with register address)
     else if (std::holds_alternative<mem_access_t>(data)) {
         auto& mem = std::get<mem_access_t>(data);
 
-        // Allocate I2C sendrecv structure for write-then-read operation
-        size_t msg_size = sizeof(i2c_sendrecv_t) + sizeof(uint32_t) + mem.size;
-        i2c_sendrecv_t *msg = (i2c_sendrecv_t *)malloc(msg_size);
-        if (!msg) {
-            pthread_mutex_unlock(&i2c_mutex);
+        if(mem.size < MIN_READ_SIZE) {
+            mem.size = MIN_READ_SIZE;
+        }
+
+        struct i2c_recv_data_msg_t *msg = NULL;
+
+        msg = (struct i2c_recv_data_msg_t*)malloc(sizeof(struct i2c_recv_data_msg_t) + mem.size); // allocate enough memory for both the calling information and received data
+        if (!msg)
+        {
+            perror("alloc failed");
             return I2C_ERROR_ALLOC_FAILED;
         }
 
-        // Configure message for write register address, then read data
-        msg->slave.addr = _slave.addr;
-        msg->slave.fmt = _slave.fmt;
-        msg->send_len = sizeof(uint32_t);  // Send register address
-        msg->recv_len = mem.size;          // Receive data bytes
-        msg->stop = 1;
+            // Assign the I2C device and format of message
+        msg->hdr.slave.addr = _slave.info.addr;
+        msg->hdr.slave.fmt = _slave.info.fmt;
+        msg->hdr.send_len = 1; //send addr
+        msg->hdr.recv_len = mem.size;
+        msg->hdr.stop = 1;
 
-        // Copy register address to send buffer
-        memcpy(msg->buf, &mem.addr, sizeof(uint32_t));
+        msg->bytes[0] = mem.addr;
 
-        // Perform I2C write-then-read operation
-        if (devctl(i2c_fd, DCMD_I2C_SENDRECV, msg, msg_size, NULL) != EOK) {
-            fprintf(stderr, "I2C memory read failed: %s\n", strerror(errno));
-            status = I2C_ERROR_OPERATION_FAILED;
-        } else {
-            // Copy received data (after the sent register address)
-            memcpy(mem.buf, msg->buf + msg->send_len, mem.size);
+        // Send the I2C message
+        int status, err; // status information about the devctl() call
+        err = devctl(i2c_fd[_bus_number], DCMD_I2C_SENDRECV, msg, sizeof(struct i2c_recv_data_msg_t) + mem.size, (&status));
+        if (err != EOK)
+        {
+            free(msg);
+            fprintf(stderr, "error with devctl: %s\n", strerror(err));
+            return I2C_ERROR_OPERATION_FAILED;
         }
 
-        free(msg);
-    }
+        // return the read data
+        memcpy(mem.buf, msg->bytes, mem.size);
 
-    pthread_mutex_unlock(&i2c_mutex);
-    return status;
+        // Free allocated message
+        free(msg);
+
+        return I2C_SUCCESS;
+    } else {
+        perror("error_cmd");
+        return I2C_ERROR_NOT_CONNECTED;
+    }
 }
 
 /**
@@ -299,5 +337,5 @@ i2c_status_t I2CDevice::smbus_cleanup()
  */
 uint16_t I2CDevice::getSlaveAddress() const
 {
-    return _slave.addr;
+    return _slave.info.addr;
 }

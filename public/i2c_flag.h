@@ -53,8 +53,7 @@ typedef enum {
  * @endcode
  */
 typedef struct {
-    uint16_t      addr;     /**< Slave device address (7-bit or 10-bit) */
-    uint8_t       fmt;      /**< Address format: I2C_ADDRFMT_7BIT or I2C_ADDRFMT_10BIT */
+    i2c_addr_t    info;
     device_type_t mode;     /**< Device operation mode: I2C_DIRECT, I2C_MEM, or I2C_Listen */
 } i2c_slave_t;
 
@@ -68,7 +67,7 @@ typedef struct {
  */
 typedef struct {
     uint8_t *buf;           /**< Pointer to data buffer for read/write */
-    size_t len;             /**< Number of bytes to read/write (default: 1) */
+    size_t size;             /**< Number of bytes to read/write (default: 1) */
 } direct_access_t;
 
 /**
@@ -80,9 +79,9 @@ typedef struct {
  * Initialize with: mem_access_t data = {.addr = 0x10, .buf = buffer, .size = 2};
  */
 typedef struct {
-    uint32_t addr;          /**< Internal register/memory address within the device */
+    uint8_t addr;          /**< Internal register/memory address within the device */
     uint8_t *buf;           /**< Pointer to data buffer for read/write */
-    size_t size;            /**< Number of bytes to read/write (default: 1) */
+    size_t size;
 } mem_access_t;
 
 #endif // I2C_FLAG_H

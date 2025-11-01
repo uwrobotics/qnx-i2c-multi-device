@@ -122,7 +122,7 @@ class I2CDevice {
     private:
         uint8_t _bus_number;        /**< I2C bus number */
         i2c_slave_t _slave;         /**< Slave device configuration */
-        pthread_t _tid;  // Interrupt Thread To BE Implemented(TODO)
+        pthread_t _tid;  // Interrupt Thread(TODO)
 
 
         /**
