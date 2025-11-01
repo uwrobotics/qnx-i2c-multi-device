@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "template": {
+    "projectId": "i2c_host",
+    "artifactName": "i2c_host",
+    "buildType": "SimpleMake",
+    "language": "cpp",
+    "archlist": "x86_64,aarch64le",
+    "artifactType": "Executable"
+  }
+}
