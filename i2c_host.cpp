@@ -16,6 +16,8 @@
 #include <devctl.h>
 #include <pthread.h>
 
+#include <iostream>
+
 
 /** @brief Maximum number of I2C buses supported by this driver */
 #define MAX_I2C_BUSES       8
