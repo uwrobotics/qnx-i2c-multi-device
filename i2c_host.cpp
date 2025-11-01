@@ -132,7 +132,6 @@ struct i2c_send_data_msg_t
  */
 i2c_status_t I2CDevice::read(std::variant<direct_access_t, mem_access_t> &data)
 {
-    // TODO: Redo the implementation, there should not be mutex lock and need to open the i2c FD and then handle the logic
     if (this->connect())
     {
         perror("open_i2c_fd");
@@ -244,77 +243,110 @@ i2c_status_t I2CDevice::read(std::variant<direct_access_t, mem_access_t> &data)
  */
 i2c_status_t I2CDevice::write(const std::variant<direct_access_t, mem_access_t> &data)
 {
-    pthread_mutex_lock(&i2c_mutex);
-
-    if (i2c_fd[_bus_number] == -1) {
-        pthread_mutex_unlock(&i2c_mutex);
+    if (this->connect())
+    {
+        perror("open_i2c_fd");
         return I2C_ERROR_NOT_CONNECTED;
     }
 
-    i2c_status_t status = I2C_SUCCESS;
+    const int MIN_MEM_WRITE_SIZE = 2; //Reg+Data
+    const int MIN_WRITE_SIZE = 1; //Reg+Data
 
-    // Handle direct write (no register address)
+    // Handle direct read (no register address)
     if (std::holds_alternative<direct_access_t>(data)) {
-        auto& direct = std::get<direct_access_t>(data);
+        auto& mem = std::get<direct_access_t>(data);
 
-        // Allocate I2C send structure
-        size_t msg_size = sizeof(i2c_send_t) + direct.len;
-        i2c_send_t *msg = (i2c_send_t *)malloc(msg_size);
-        if (!msg) {
-            pthread_mutex_unlock(&i2c_mutex);
+        if(mem.size < MIN_WRITE_SIZE) {
+            perror("write_size_err");
+            return I2C_ERROR_OPERATION_FAILED;
+        }
+
+        // Allocate memory for the message
+        struct i2c_send_data_msg_t *msg = NULL;
+
+
+        msg = (struct i2c_send_data_msg_t*)malloc(sizeof(struct i2c_send_data_msg_t) + mem.size); // allocate enough memory for both the calling information and received data        
+        if (!msg)
+        {
+            perror("alloc failed");
             return I2C_ERROR_ALLOC_FAILED;
         }
 
-        // Configure message for send operation
-        msg->slave.addr = _slave.addr;
-        msg->slave.fmt = _slave.fmt;
-        msg->len = direct.len;
-        msg->stop = 1;
+        // Assign the I2C device and format of message
+        msg->hdr.slave.addr = _slave.info.addr;
+        msg->hdr.slave.fmt = _slave.info.fmt;
+        msg->hdr.len = mem.size;
+        msg->hdr.stop = 1;
 
-        // Copy data to send buffer
-        memcpy(msg->buf, direct.buf, direct.len);
+        // Add the write data
+        memcpy(msg->bytes, mem.buf, mem.size);
 
-        // Perform I2C write operation
-        if (devctl(i2c_fd, DCMD_I2C_SEND, msg, msg_size, NULL) != EOK) {
-            fprintf(stderr, "I2C direct write failed: %s\n", strerror(errno));
-            status = I2C_ERROR_OPERATION_FAILED;
+
+        // Send the I2C message
+        int status, err; // status information about the devctl() call
+        err = devctl(i2c_fd[_bus_number], DCMD_I2C_SEND, msg, sizeof(struct i2c_send_data_msg_t) + mem.size, (&status));
+        if (err != EOK)
+        {
+            free(msg);
+            fprintf(stderr, "error with devctl: %s\n", strerror(err));
+            return I2C_ERROR_OPERATION_FAILED;
         }
 
+        // Free allocated message
         free(msg);
+
+        return I2C_SUCCESS;
     }
-    // Handle memory-addressed write (with register address)
+    // Handle memory-addressed read (with register address)
     else if (std::holds_alternative<mem_access_t>(data)) {
         auto& mem = std::get<mem_access_t>(data);
 
-        // Allocate I2C send structure (register address + data)
-        size_t msg_size = sizeof(i2c_send_t) + sizeof(uint32_t) + mem.size;
-        i2c_send_t *msg = (i2c_send_t *)malloc(msg_size);
-        if (!msg) {
-            pthread_mutex_unlock(&i2c_mutex);
+        if(mem.size < MIN_WRITE_SIZE) {
+            perror("write_size_err");
+            return I2C_ERROR_OPERATION_FAILED;
+        }
+
+        const size_t MEM_ADDR_SIZE = 1;
+
+        // Allocate memory for the message
+        struct i2c_send_data_msg_t *msg = NULL;
+
+
+        msg = (struct i2c_send_data_msg_t*)malloc(sizeof(struct i2c_send_data_msg_t) + MEM_ADDR_SIZE + mem.size); // allocate enough memory for both the calling information and received data        
+        if (!msg)
+        {
+            perror("alloc failed");
             return I2C_ERROR_ALLOC_FAILED;
         }
 
-        // Configure message for send operation
-        msg->slave.addr = _slave.addr;
-        msg->slave.fmt = _slave.fmt;
-        msg->len = sizeof(uint32_t) + mem.size;  // Register address + data
-        msg->stop = 1;
+        // Assign the I2C device and format of message
+        msg->hdr.slave.addr = _slave.info.addr;
+        msg->hdr.slave.fmt = _slave.info.fmt;
+        msg->hdr.len = MEM_ADDR_SIZE+mem.size; //addr + data
+        msg->hdr.stop = 1;
 
-        // Copy register address and data to send buffer
-        memcpy(msg->buf, &mem.addr, sizeof(uint32_t));
-        memcpy(msg->buf + sizeof(uint32_t), mem.buf, mem.size);
+        // Add the write data
+        msg->bytes[0] = mem.addr;
+        memcpy(msg->bytes+MEM_ADDR_SIZE, mem.buf, mem.size);
 
-        // Perform I2C write operation
-        if (devctl(i2c_fd, DCMD_I2C_SEND, msg, msg_size, NULL) != EOK) {
-            fprintf(stderr, "I2C memory write failed: %s\n", strerror(errno));
-            status = I2C_ERROR_OPERATION_FAILED;
+        // Send the I2C message
+        int status, err; // status information about the devctl() call
+        err = devctl(i2c_fd[_bus_number], DCMD_I2C_SEND, msg, sizeof(struct i2c_send_data_msg_t) + MEM_ADDR_SIZE + mem.size, (&status));
+        if (err != EOK)
+        {
+            free(msg);
+            fprintf(stderr, "error with devctl: %s\n", strerror(err));
+            return I2C_ERROR_OPERATION_FAILED;
         }
 
+        // Free allocated message
         free(msg);
-    }
 
-    pthread_mutex_unlock(&i2c_mutex);
-    return status;
+        return I2C_SUCCESS;
+    } else {
+        perror("error_cmd");
+        return I2C_ERROR_NOT_CONNECTED;
+    }
 }
 
 /**
@@ -339,3 +371,6 @@ uint16_t I2CDevice::getSlaveAddress() const
 {
     return _slave.info.addr;
 }
+
+
+// TODO: Add thread based interrupt support
