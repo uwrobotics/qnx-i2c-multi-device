@@ -327,7 +327,7 @@ i2c_status_t I2CDevice::write(const std::variant<direct_access_t, mem_access_t> 
 
         // Add the write data
         msg->bytes[0] = mem.addr;
-        memcpy(msg->bytes+MEM_ADDR_SIZE, mem.buf, mem.size);
+        memcpy(&msg->bytes[MEM_ADDR_SIZE], mem.buf, mem.size);
 
         // Send the I2C message
         int status, err; // status information about the devctl() call
