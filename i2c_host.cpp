@@ -273,17 +273,9 @@ i2c_state_t I2CDevice::write(const std::variant<direct_access_t, mem_access_t> &
         return I2C_ERROR_NOT_CONNECTED;
     }
 
-    const int MIN_MEM_WRITE_SIZE = 2; //Reg+Data
-    const int MIN_WRITE_SIZE = 1; //Data
-
     // Handle direct write (no register address)
     if (std::holds_alternative<direct_access_t>(data)) {
         auto& mem = std::get<direct_access_t>(data);
-
-        if(mem.size < MIN_WRITE_SIZE) {
-            perror("write_size_err");
-            return I2C_ERROR_OPERATION_FAILED;
-        }
 
         // Allocate memory for the message
         struct i2c_send_data_msg_t *msg = NULL;
@@ -324,11 +316,6 @@ i2c_state_t I2CDevice::write(const std::variant<direct_access_t, mem_access_t> &
     // Handle memory-addressed write (with register address)
     else if (std::holds_alternative<mem_access_t>(data)) {
         auto& mem = std::get<mem_access_t>(data);
-
-        if(mem.size < MIN_MEM_WRITE_SIZE) {
-            perror("write_size_err");
-            return I2C_ERROR_OPERATION_FAILED;
-        }
 
         const size_t MEM_ADDR_SIZE = 1;
 
