@@ -29,6 +29,7 @@
         JsonEncode() {
             enc = json_encoder_create();
             json_encoder_start_object(enc, NULL);
+            open_brackets = 0;
         }
 
         ~JsonEncode() {
@@ -36,6 +37,11 @@
         }
 
         std::string get_string() {
+            while (open_brackets > 0) {
+                json_encoder_end_object(enc);
+                open_brackets--;
+            }
+            
             if(buf.empty()) {
                 json_encoder_end_object(enc);
                 if(get_status()==JSON_ENCODER_OK) {
@@ -47,11 +53,30 @@
             return buf;
         }
 
+        void add(std::string key, int value) {
+            json_encoder_add_int(enc, key, value);
+        }
+
+        void add(std::string key, std::string value) {
+            json_encoder_add_string(enc, key, value);
+        }
+
+        void indent(std::string key) {
+            json_encoder_start_object(enc, key);
+            open_brackets++;
+        }
+
+        void closeIndent() {
+            json_encoder_end_object(enc);
+            open_brackets--;
+        }
+
     private:
         json_encoder_t *enc;
         char str[1024];
         unsigned max_finfo_size = 1024;
         std::string buf;
+        int open_brackets;
         
 
         json_encoder_error_t get_status() {
