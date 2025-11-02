@@ -65,12 +65,12 @@ OBJS = $(addprefix $(OUTPUT_DIR)/,$(addsuffix .o, $(basename $(SRCS))))
 
 #Compiling rule for c
 $(OUTPUT_DIR)/%.o: %.c
-	-@mkdir -p $(OUTPUT_DIR)
+	-@mkdir -p $(dir $@)
 	$(CC) -c $(DEPS) -o $@ $(INCLUDES) $(CCFLAGS_all) $(CCFLAGS) $<
 
 #Compiling rule for c++
 $(OUTPUT_DIR)/%.o: %.cpp
-	-@mkdir -p $(OUTPUT_DIR)
+	-@mkdir -p $(dir $@)
 	$(CXX) -c $(DEPS) -o $@ $(INCLUDES) $(CCFLAGS_all) $(CCFLAGS) $<
 
 #Linking rule

@@ -16,7 +16,7 @@
 #define I2C_HOST_H
 
 #include <variant>
-#include <public/i2c_flag.h>
+#include "i2c_flag.h"
 
 /**
  * @class I2CDevice

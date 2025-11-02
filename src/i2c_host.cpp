@@ -6,7 +6,7 @@
  * Uses devctl() for I2C communication with slave devices.
  */
 
-#include "i2c_host.h"
+#include "inc/i2c_host.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
