@@ -29,7 +29,7 @@
         JsonEncode() {
             enc = json_encoder_create();
             json_encoder_start_object(enc, NULL);
-            open_brackets = 0;
+            open_brackets = 1;
         }
 
         ~JsonEncode() {
@@ -37,13 +37,8 @@
         }
 
         std::string get_string() {
-            while (open_brackets > 0) {
-                json_encoder_end_object(enc);
-                open_brackets--;
-            }
-            
             if(buf.empty()) {
-                json_encoder_end_object(enc);
+                closeOpenBrackets();
                 if(get_status()==JSON_ENCODER_OK) {
                     snprintf(str, max_finfo_size, "JSON:%s\n", json_encoder_buffer(enc));
                     buf = str;
@@ -85,6 +80,13 @@
             if ( status != JSON_ENCODER_OK ) {
                 perror("Json Error");
                 return status;
+            }
+        }
+
+        void closeOpenBrackets() {
+            while (open_brackets > 0) {
+                json_encoder_end_object(enc);
+                open_brackets--;
             }
         }
 };
