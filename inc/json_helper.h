@@ -21,11 +21,6 @@
  */
 
 
-// user input: one unordered map entry (name and type and value)
-// class will count the nest
-// output json object
-
-
  class JsonEncode {
     public:
         JsonEncode() {
@@ -44,7 +39,7 @@
                 char str[1024];
                 int max_finfo_size = 1024;
                 if(get_status()==JSON_ENCODER_OK && max_finfo_size >= json_encoder_length(_enc)) {
-                    snprintf(str, max_finfo_size, "JSON:%s\n", json_encoder_buffer(_enc));
+                    snprintf(str, max_finfo_size, "%s", json_encoder_buffer(_enc));
                     buf = str;
                 } else {
                     perror("Json Exceed Max Length");
@@ -60,9 +55,15 @@
             }
         }
 
+        void add(const std::unordered_map<std::string, double> &entry) {
+            for (const auto& [key, value]: entry){
+                json_encoder_add_double(_enc, key.c_str(), value);
+            }
+        }
+
         void add(const std::unordered_map<std::string, std::string> &entry) {
             for (const auto& [key, value]: entry){
-                json_encoder_add_json(_enc, key.c_str(), value.c_str());
+                json_encoder_add_string(_enc, key.c_str(), value.c_str());
             }
         }
 
@@ -71,6 +72,16 @@
                 json_encoder_start_array(_enc, key.c_str());
                 for (int value: values){
                     json_encoder_add_int(_enc, NULL, value);
+                }
+                json_encoder_end_array(_enc);
+            }
+        }
+
+        void add(const std::unordered_map<std::string, std::vector<double>> entry) {
+            for (const auto& [key, values]: entry){
+                json_encoder_start_array(_enc, key.c_str());
+                for (int value: values){
+                    json_encoder_add_double(_enc, NULL, value);
                 }
                 json_encoder_end_array(_enc);
             }
@@ -112,6 +123,75 @@
                 _open_brackets--;
             }
         }
+};
+
+class JsonDecode {
+    public:
+        JsonDecode(const char* buf){
+            _dec = json_decoder_create();
+            std::cout << "View String: " << buf << std::endl;
+            std::cout << "Parser Return: " << (int)json_decoder_parse_json_str(_dec, buf) << std::endl;
+            json_decoder_push_object(_dec, NULL, false);
+        }
+
+        ~JsonDecode(){
+            json_decoder_destroy(_dec);
+        }
+
+        json_decoder_error_t get_int(std::string key, int &result, bool enforced) {
+            return json_decoder_get_int(_dec, key.c_str(), &result, enforced);
+        }
+
+        json_decoder_error_t get_double(std::string key, double &result, bool enforced) {
+            return json_decoder_get_double(_dec, key.c_str(),& result, enforced);
+        }
+
+        json_decoder_error_t get_string(std::string key, std::string &result, bool enforced) {
+            const char* buf;
+            json_decoder_error_t err = (json_decoder_get_string(_dec, key.c_str(), &buf, enforced));
+            result = buf;
+
+            return err;
+        }
+
+        json_decoder_error_t get_vec_int(std::string key, std::vector<int> &buf, int size, bool enforced) {
+            json_decoder_error_t err = json_decoder_push_array(_dec, key.c_str(), enforced);
+            
+            for(auto i=0; i<size; i++){
+                int value;
+                err = json_decoder_get_int(_dec, NULL, &value, false);
+                buf.push_back(value);
+            }
+
+            closeIndent();
+
+            return err;
+        }
+
+        json_decoder_error_t get_vec_double(std::string key, std::vector<double> &buf, int size, bool enforced) {
+            json_decoder_error_t err = json_decoder_push_array(_dec, key.c_str(), enforced);
+            
+            for(auto i=0; i<size; i++){
+                double value;
+                err = json_decoder_get_double(_dec, NULL, &value, true);
+                buf.push_back(value);
+            }
+
+            closeIndent();
+
+            return err;
+        }
+
+        json_decoder_error_t indent(std::string key, bool enforced) {
+            return json_decoder_push_object(_dec, key.c_str(), enforced);
+        }
+
+        json_decoder_error_t closeIndent() {
+            return json_decoder_pop(_dec);
+        }
+
+    private:
+        json_decoder_t *_dec;
 };
 
 #endif // JSON_HELPER_H
