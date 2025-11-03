@@ -129,8 +129,7 @@ class JsonDecode {
     public:
         JsonDecode(const char* buf){
             _dec = json_decoder_create();
-            std::cout << "View String: " << buf << std::endl;
-            std::cout << "Parser Return: " << (int)json_decoder_parse_json_str(_dec, buf) << std::endl;
+            json_decoder_parse_json_str(_dec, buf);
             json_decoder_push_object(_dec, NULL, false);
         }
 

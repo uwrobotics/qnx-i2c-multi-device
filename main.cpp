@@ -22,7 +22,7 @@ int main() {
     
     std::string json_string = in_obj.get_string();
 
-    std::cout << json_string << std::endl;
+    std::cout << "Json: " << json_string << std::endl;
 
     JsonDecode out_obj = JsonDecode(json_string.c_str());
     int id;
