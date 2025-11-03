@@ -190,7 +190,7 @@ i2c_state_t I2CDevice::read(std::variant<direct_access_t, mem_access_t> &data)
 
         // Send the I2C message
         int status, err; // status information about the devctl() call
-        err = devctl(i2c_fd[_bus_number], DCMD_I2C_SENDRECV, msg,   (*msg) + mem.size, (&status));
+        err = devctl(i2c_fd[_bus_number], DCMD_I2C_SENDRECV, msg, sizeof(*msg) + mem.size, (&status));
         if (err != EOK)
         {
             free(msg);

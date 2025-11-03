@@ -3,8 +3,10 @@
 
 #include <sys/json.h>
 #include <stdint.h>
-#include <string>
 #include <stdlib.h>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 /**
  * struct {
@@ -27,66 +29,87 @@
  class JsonEncode {
     public:
         JsonEncode() {
-            enc = json_encoder_create();
-            json_encoder_start_object(enc, NULL);
-            open_brackets = 1;
+            _enc = json_encoder_create();
+            json_encoder_start_object(_enc, NULL);
+            _open_brackets = 1;
         }
 
         ~JsonEncode() {
-            json_encoder_destroy(enc);
+            json_encoder_destroy(_enc);
         }
 
         std::string get_string() {
             if(buf.empty()) {
                 closeOpenBrackets();
-                if(get_status()==JSON_ENCODER_OK) {
-                    snprintf(str, max_finfo_size, "JSON:%s\n", json_encoder_buffer(enc));
+                char str[1024];
+                int max_finfo_size = 1024;
+                if(get_status()==JSON_ENCODER_OK && max_finfo_size >= json_encoder_length(_enc)) {
+                    snprintf(str, max_finfo_size, "JSON:%s\n", json_encoder_buffer(_enc));
                     buf = str;
+                } else {
+                    perror("Json Exceed Max Length");
                 }
             }
 
             return buf;
         }
 
-        void add(std::string key, int value) {
-            json_encoder_add_int(enc, key, value);
-        }
-
-        void add(std::string key, std::string value) {
-            json_encoder_add_string(enc, key, value);
-        }
-
-        void indent(std::string key) {
-            json_encoder_start_object(enc, key);
-            open_brackets++;
-        }
-
-        void closeIndent() {
-            json_encoder_end_object(enc);
-            open_brackets--;
-        }
-
-    private:
-        json_encoder_t *enc;
-        char str[1024];
-        unsigned max_finfo_size = 1024;
-        std::string buf;
-        int open_brackets;
-        
-
-        json_encoder_error_t get_status() {
-            json_encoder_error_t status = json_encoder_get_status(enc);
-
-            if ( status != JSON_ENCODER_OK ) {
-                perror("Json Error");
-                return status;
+        void add(const std::unordered_map<std::string, int> &entry) {
+            for (const auto& [key, value]: entry){
+                json_encoder_add_int(_enc, key.c_str(), value);
             }
         }
 
+        void add(const std::unordered_map<std::string, std::string> &entry) {
+            for (const auto& [key, value]: entry){
+                json_encoder_add_json(_enc, key.c_str(), value.c_str());
+            }
+        }
+
+        void add(const std::unordered_map<std::string, std::vector<int>> entry) {
+            for (const auto& [key, values]: entry){
+                json_encoder_start_array(_enc, key.c_str());
+                for (int value: values){
+                    json_encoder_add_int(_enc, NULL, value);
+                }
+                json_encoder_end_array(_enc);
+            }
+        }
+
+        void indent(std::string key) {
+            json_encoder_start_object(_enc, key.c_str());
+            _open_brackets++;
+        }
+
+        void closeIndent() {
+            json_encoder_end_object(_enc);
+            _open_brackets--;
+        }
+
+        int show_indent_level() {
+            return _open_brackets;
+        }
+
+    private:
+        json_encoder_t *_enc;
+        std::string buf;
+        int _open_brackets;
+        
+
+        json_encoder_error_t get_status() {
+            json_encoder_error_t status = json_encoder_get_status(_enc);
+
+            if ( status != JSON_ENCODER_OK ) {
+                perror("Json Error");
+            }
+
+            return status;
+        }
+
         void closeOpenBrackets() {
-            while (open_brackets > 0) {
-                json_encoder_end_object(enc);
-                open_brackets--;
+            while (_open_brackets > 0) {
+                json_encoder_end_object(_enc);
+                _open_brackets--;
             }
         }
 };
