@@ -1,38 +1,55 @@
 #include<inc/i2c_host.h>
 #include<iostream>
 
-#include <sys/json.h>
+#include <inc/json_helper.h>
 #include <sys/neutrino.h>
 
 int main() {
-    // Note: multiple slave device should share the same bus ID and do not need to register the bus again.
+    std::unordered_map<std::string, int> item1 = {{"ID", 1}};
+    std::unordered_map<std::string, std::string> item2 = {{"Name", "Saheed"}};
+    std::unordered_map<std::string, std::string> item3 = {{"Name", "Yuchen"}, {"Gender", "Male"}};
+    std::vector<int> arr = {1,2,3};
+    std::unordered_map<std::string, std::vector<int>>item4 ={{"Values", arr}};
 
+    JsonEncode in_obj = JsonEncode();
 
-    // Note: input msg will be in unordered map
-    I2CDevice device = I2CDevice(1, 0X4A, I2C_MEM);
+    in_obj.add(item1);
+    in_obj.add(item3);
+    in_obj.indent("More Info");
+    in_obj.add(item2);
+    in_obj.add(item4);
 
-    mem_access_t data;
+    
+    std::string json_string = in_obj.get_string();
 
-    uint8_t payload[4] = {5,5,5};
+    std::cout << "Json: " << json_string << std::endl;
 
-    data.addr = 0X00;
-    data.buf = payload;
-    data.size=4;
+    JsonDecode out_obj = JsonDecode(json_string.c_str());
+    int id;
+    out_obj.get_int("ID", id, false);
+    std::cout << "ID: " << id << std::endl;
 
-    std::variant<direct_access_t, mem_access_t> meta_data = data;
+    std::string name, gender;
+    out_obj.get_string("Name", name, false);
+    std::cout << "Name: " << name << std::endl;
 
-    std::cout << "R Return Code:" << (int)device.read(meta_data) << std::endl;
+    out_obj.get_string("Gender", gender, false);
+    std::cout << "Gender: " << gender << std::endl;
 
-    std::cout << "Mem Read Result: 0x" << std::hex << (int)data.buf[0] << " " << std::hex << (int)data.buf[1] << " " << std::hex << (int)data.buf[2] << std::endl;
+    out_obj.indent("More Info", false);
+    std::cout << "Enter indent" << std::endl;
 
-    uint8_t word[4] = {'t', 'h', 'i', 's'};
-    data.buf = word;
-    data.size=1;
+    out_obj.get_string("Name", name, false);
+    std::cout << "Name: " << name << std::endl;
 
-    meta_data = data;
+    std::vector<int> arr_out;
+    out_obj.get_vec_int("Values", arr_out, 3, false);
+    std::cout << "Values: ";
 
-    std::cout << "W Return Code:" << (int)device.write(meta_data) <<std::endl;
+    for(auto value: arr_out){
+        std::cout << value << " ";
+    }
 
-    // Tested with logic analyzer result
+    std::cout << std::endl;
     return 0;
 }
