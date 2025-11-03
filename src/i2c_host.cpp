@@ -84,6 +84,7 @@ I2CDevice::I2CDevice(uint8_t bus_number, uint8_t slave_addr, device_type_t mode)
         fprintf(stderr, "Failed to connect to I2C device on bus %d, addr 0x%02X\n",
                 _bus_number, _slave.info.addr);
     }
+    disconnect();
 }
 
 /**
@@ -203,6 +204,7 @@ i2c_state_t I2CDevice::read(std::variant<direct_access_t, mem_access_t> &data)
 
         // Free allocated message
         free(msg);
+        this->disconnect();
 
         return I2C_SUCCESS;
     }
@@ -247,6 +249,7 @@ i2c_state_t I2CDevice::read(std::variant<direct_access_t, mem_access_t> &data)
 
         // Free allocated message
         free(msg);
+        this->disconnect();
 
         return I2C_SUCCESS;
     } else {
@@ -310,6 +313,7 @@ i2c_state_t I2CDevice::write(const std::variant<direct_access_t, mem_access_t> &
 
         // Free allocated message
         free(msg);
+        this->disconnect();
 
         return I2C_SUCCESS;
     }
@@ -352,6 +356,7 @@ i2c_state_t I2CDevice::write(const std::variant<direct_access_t, mem_access_t> &
 
         // Free allocated message
         free(msg);
+        this->disconnect();
 
         return I2C_SUCCESS;
     } else {
